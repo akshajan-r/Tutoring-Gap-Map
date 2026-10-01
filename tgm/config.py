@@ -10,28 +10,32 @@ SQL_DIR = ROOT / "sql"
 OUTPUT_DIR = ROOT / "outputs"
 DEFAULT_DB = ROOT / "data" / "tutoring_gap.db"
 
-# Academic years with published KS4 school performance tables. There are no
-# school-level tables for 2019-20 or 2020-21 (exams were cancelled for COVID).
+# KS4 (GCSE) results come from DfE's Explore Education Statistics (EES) API:
+# "Key stage 4 institution level - Schools (performance)", one tidy CSV with every
+# school for the latest few years (2022/23-2024/25 as of 2026), split by
+# disadvantage status. The old Compare School Performance site blocks scripted
+# downloads, so earlier years (england_ks4final.csv) can only be added by hand.
+EES_KS4_DATASET = "19e39901-a96c-be76-b9c2-6af54ae076d2"
+
+# Years the synthetic sample generates (mirrors the published series: no
+# school-level tables exist for 2019-20 or 2020-21, when exams were cancelled).
 KS4_YEARS = ["2018-2019", "2021-2022", "2022-2023", "2023-2024", "2024-2025"]
 
-# Expected raw layout. If downloading by hand, drop the files here:
-#   data/raw/ks4/<year>/england_ks4final.csv   (england_ks4revised/provisional also accepted)
+# Raw layout. If downloading by hand, drop the files here:
+#   data/raw/ks4/ees_ks4_schools.csv           (written by `python -m tgm download`)
+#   data/raw/ks4/<year>/england_ks4final.csv   (optional older years, by hand)
 #   data/raw/gias/edubasealldata<YYYYMMDD>.csv
 #   data/raw/gias/links_edubasealldata<YYYYMMDD>.csv
 #   data/raw/imd/<any IoD file with LSOA-level scores>.csv|.xlsx
 #   data/raw/onspd/<optional ONS postcode directory>.csv
-KS4_GLOB = "england_ks4*.csv"
 
-# Best-effort download sources. Government download endpoints change often; if
-# one fails, `python -m tgm download` prints the landing page to fetch from.
+# Download sources. If one fails, `python -m tgm download` prints where to get it by hand.
 SOURCES = {
     "ks4": {
-        "landing": "https://www.compare-school-performance.service.gov.uk/download-data",
-        # The download form submits to this URL and returns a zip per year.
-        "url": (
-            "https://www.compare-school-performance.service.gov.uk/download-data"
-            "?download=true&regions=0&filters=KS4&fileformat=csv&year={year}&meta=false"
-        ),
+        "landing": "https://explore-education-statistics.service.gov.uk/find-statistics/key-stage-4-performance",
+        "url": f"https://api.education.gov.uk/statistics/v1/data-sets/{EES_KS4_DATASET}/csv",
+        # Older years (england_ks4final.csv per year) - browser only.
+        "older_years_landing": "https://www.compare-school-performance.service.gov.uk/download-data",
     },
     "gias": {
         "landing": "https://get-information-schools.service.gov.uk/Downloads",

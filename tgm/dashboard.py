@@ -189,7 +189,7 @@ a { color: var(--series-1); }
     </div>
     <div class="card">
       <h2 id="trend-title">Gap over time</h2>
-      <p class="note">Gap vs national non-disadvantaged, Attainment 8 points. No school tables for 2019-20 or 2020-21; 2021-22 grading was more generous.</p>
+      <p class="note" id="trend-note">Gap vs national non-disadvantaged, Attainment 8 points.</p>
       <div id="trend"></div>
       <div class="legend" id="trend-legend"></div>
     </div>
@@ -238,6 +238,8 @@ if (DATA.repo_url) {
 }
 
 const years = uniq(las.map(d => d.academic_year));
+if (years.some(y => y < '2022')) document.getElementById('trend-note').textContent +=
+  ' No school tables for 2019-20 or 2020-21; 2021-22 grading was more generous.';
 const state = { year: years[years.length - 1], region: 'All', type: 'All', measure: 'gap_vs_national', la: null };
 const measureLabel = { gap_vs_national: 'Gap vs national', gap_within_la: 'Gap within area', scale_of_need: 'Scale of need' };
 

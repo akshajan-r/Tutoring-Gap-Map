@@ -28,7 +28,6 @@ def main(argv=None):
     ap.add_argument("--db", default=None,
                     help="SQLite path or postgresql://user:pass@host/db (default: data/tutoring_gap.db)")
     ap.add_argument("--out", type=Path, default=config.OUTPUT_DIR, help="output folder")
-    ap.add_argument("--years", nargs="*", default=config.KS4_YEARS, help="academic years to download")
     ap.add_argument("--strict", action="store_true",
                     help="download: exit with an error if any source couldn't be fetched")
     ap.add_argument("--site-dir", type=Path, default=config.OUTPUT_DIR / "site",
@@ -43,7 +42,7 @@ def main(argv=None):
         if args.sample:
             raise SystemExit("--sample doesn't download anything; run `build --sample`.")
         from .download import download_all
-        missing = download_all(raw_dir, args.years)
+        missing = download_all(raw_dir)
         if missing and args.strict:
             raise SystemExit(1)
         return
