@@ -102,3 +102,17 @@ def test_export_and_dashboard(sqlite_db, tmp_path):
     html = write_dashboard(db, tmp_path / "dash.html", synthetic=True).read_text()
     assert "const DATA = {" in html and "</script>" not in html.split("const DATA = ")[1].split(";\n")[0]
     db.close()
+
+
+def test_static_site(sqlite_db, tmp_path, monkeypatch):
+    from tgm.site import build_site
+    monkeypatch.setenv("GITHUB_REPOSITORY", "someone/Tutoring-Gap-Map")
+    db = Database(str(sqlite_db))
+    index = build_site(db, tmp_path / "site", synthetic=True)
+    db.close()
+    html = index.read_text()
+    for name in ("schools", "local_authorities", "beating_the_odds", "national"):
+        assert (tmp_path / "site" / "data" / f"{name}.csv").exists()
+        assert f'"data/{name}.csv"' in html                  # linked from the page
+    assert "https://github.com/someone/Tutoring-Gap-Map" in html
+    assert '"synthetic":true' in html                       # banner switched on

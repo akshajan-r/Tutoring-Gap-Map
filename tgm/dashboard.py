@@ -39,7 +39,10 @@ def _records(df, fields):
     return {"columns": list(df.columns), "rows": df.values.tolist()}
 
 
-def write_dashboard(db: Database, path: Path, synthetic: bool = False) -> Path:
+def write_dashboard(db: Database, path: Path, synthetic: bool = False,
+                    downloads: list[tuple[str, str]] | None = None,
+                    repo_url: str | None = None) -> Path:
+    """downloads: (label, relative href) pairs listed in the footer (used by the site build)."""
     data = {
         "schools": _records(db.query("SELECT * FROM dash_schools"), SCHOOL_FIELDS),
         "las": _records(db.query("SELECT * FROM dash_local_authorities"), LA_FIELDS),
@@ -47,6 +50,8 @@ def write_dashboard(db: Database, path: Path, synthetic: bool = False) -> Path:
         "national": _records(db.query("SELECT * FROM v_national_trends ORDER BY year_start"),
                              ["academic_year", "year_start", "att8_disadv", "att8_nondisadv", "att8_gap"]),
         "synthetic": synthetic,
+        "downloads": downloads or [],
+        "repo_url": repo_url,
     }
     payload = json.dumps(data, separators=(",", ":"), default=lambda o: None if o is np.nan else str(o))
     html = TEMPLATE.replace("__DATA__", payload.replace("</", "<\\/"))
@@ -61,6 +66,7 @@ TEMPLATE = r"""<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tutoring Gap Map</title>
+<meta name="description" content="Where disadvantaged pupils in England fall furthest behind at GCSE, by local authority, and which schools serving deprived communities are beating the odds.">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
@@ -108,7 +114,7 @@ select { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid 
 .tile .v { font-size: 26px; font-weight: 650; font-variant-numeric: tabular-nums; }
 .tile .d { font-size: 12px; color: var(--text-muted); }
 .grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; }
-@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .grid { grid-template-columns: minmax(0, 1fr); } }
 #map { height: 520px; border-radius: 8px; z-index: 0; }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--text-secondary); margin-top: 8px; align-items: center; }
 .sw { display: inline-block; width: 14px; height: 10px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
@@ -131,6 +137,13 @@ td.n, th.n { text-align: right; }
 .scroll { max-height: 420px; overflow: auto; }
 .pill { font-size: 11px; padding: 1px 6px; border-radius: 10px; border: 1px solid var(--border); color: var(--text-secondary); white-space: nowrap; }
 .section { margin-top: 16px; }
+footer { margin-top: 24px; color: var(--text-secondary); font-size: 13px; }
+footer h2 { color: var(--text-primary); margin-top: 16px; }
+footer h2:first-child { margin-top: 0; }
+footer ul { margin: 6px 0; padding-left: 18px; }
+footer li { margin: 3px 0; }
+a { color: var(--series-1); }
+@media (max-width: 600px) { #map { height: 380px; } .tile .v { font-size: 22px; } }
 .leaflet-tooltip { font: 12px/1.4 system-ui, sans-serif; }
 </style>
 </head>
@@ -181,6 +194,24 @@ td.n, th.n { text-align: right; }
       <div class="legend" id="trend-legend"></div>
     </div>
   </div>
+  <footer class="card section">
+    <h2>Data</h2>
+    <ul>
+      <li>GCSE results: DfE school performance tables (key stage 4), state-funded mainstream schools.</li>
+      <li>School locations and types: Get Information About Schools.</li>
+      <li>Deprivation: English Indices of Deprivation (IMD), by neighbourhood (LSOA).</li>
+      <li>All Crown copyright, used under the <a href="https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/">Open Government Licence v3.0</a>.</li>
+    </ul>
+    <p id="downloads" hidden></p>
+    <h2>Method and caveats</h2>
+    <ul>
+      <li>"Disadvantaged" = eligible for free school meals in the last 6 years, or looked after. Averages are weighted by pupil numbers; schools with suppressed figures are left out.</li>
+      <li>Beating the odds: disadvantaged pupils' Attainment 8 compared with a regression on neighbourhood deprivation and the school's % disadvantaged. Listed schools score at least one standard deviation above it, are in IMD deciles 1-3 or 40%+ disadvantaged, and have 10+ disadvantaged pupils. It flags schools worth learning from; it doesn't prove what causes the result.</li>
+      <li>No school results were published for 2019-20 or 2020-21, and 2021-22 grading was more generous, so compare gaps rather than raw scores across years.</li>
+      <li>Area circles sit at the average location of each local authority's schools. The school type filter applies to the tiles and the beating-the-odds list; area figures cover all school types.</li>
+    </ul>
+    <p id="repo" hidden></p>
+  </footer>
 </main>
 <div class="tip" id="tip"></div>
 
@@ -194,6 +225,17 @@ const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v
 const fmt = (v, d = 1) => v == null ? '–' : Number(v).toLocaleString('en-GB', {maximumFractionDigits: d, minimumFractionDigits: d});
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
 const uniq = (a) => [...new Set(a.filter(x => x != null))].sort();
+
+if (DATA.downloads.length) {
+  const el = document.getElementById('downloads');
+  el.innerHTML = '<b>Download the data:</b> ' + DATA.downloads.map(([label, href]) => `<a href="${esc(href)}" download>${esc(label)}</a>`).join(' · ');
+  el.hidden = false;
+}
+if (DATA.repo_url) {
+  const el = document.getElementById('repo');
+  el.innerHTML = `Code, SQL and full method: <a href="${esc(DATA.repo_url)}">${esc(DATA.repo_url.replace('https://', ''))}</a>`;
+  el.hidden = false;
+}
 
 const years = uniq(las.map(d => d.academic_year));
 const state = { year: years[years.length - 1], region: 'All', type: 'All', measure: 'gap_vs_national', la: null };
@@ -292,7 +334,8 @@ function renderRank() {
   const rows = laRows().filter(d => d[m] != null).sort((a, b) => b[m] - a[m]).slice(0, 15);
   document.getElementById('rank-title').textContent = `Largest gaps: top ${rows.length} areas`;
   document.getElementById('rank-note').textContent = `${measureLabel[m]}, ${state.year}${state.region !== 'All' ? ', ' + state.region : ''}. Hover for details, click to see the trend.`;
-  const W = 460, rowH = 24, lw = 140, H = rows.length * rowH + 8;
+  const el = document.getElementById('rank');
+  const W = Math.max(300, el.clientWidth || 460), rowH = 24, lw = Math.min(140, W * 0.32), H = rows.length * rowH + 8;
   const max = Math.max(...rows.map(d => d[m]), 1);
   const x = (v) => lw + (W - lw - 48) * Math.max(0, v) / max;
   let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Bar chart of the largest gaps">`;
@@ -303,7 +346,6 @@ function renderRank() {
       <text class="val" x="${x(d[m]) + 6}" y="${y + 15}">${fmt(d[m], m === 'scale_of_need' ? 0 : 1)}</text>
       <rect class="hit" x="0" y="${y}" width="${W}" height="${rowH}"/></g>`;
   });
-  const el = document.getElementById('rank');
   el.innerHTML = svg + '</svg>';
   el.querySelectorAll('g[data-i]').forEach(g => {
     const d = rows[+g.dataset.i];
@@ -335,19 +377,23 @@ function renderTrend() {
   const series = [{ name: 'England', key: '--series-1', pts: natLine }];
   if (sel.length) series.push({ name: sel[0].la_name, key: '--series-2', pts: sel.map(d => ({ y: d.academic_year, v: d.gap_vs_national })) });
   document.getElementById('trend-title').textContent = sel.length ? `Gap over time: ${sel[0].la_name} vs England` : 'Gap over time: England';
-  const W = 460, H = 240, pl = 36, pr = 90, pt = 12, pb = 28;
+  const el = document.getElementById('trend');
+  const W = Math.max(300, el.clientWidth || 460), H = 240, pl = 36, pr = 100, pt = 12, pb = 28;
   const xs = years, all = series.flatMap(s => s.pts.map(p => p.v)).filter(v => v != null);
-  const lo = Math.floor(Math.min(...all) - 1), hi = Math.ceil(Math.max(...all) + 1);
+  // Whole-number ticks: step chosen so there are at most 5 gridlines.
+  const step = Math.max(1, Math.ceil((Math.max(...all) - Math.min(...all) + 2) / 4));
+  const lo = Math.floor((Math.min(...all) - 1) / step) * step;
+  const hi = Math.max(lo + step, Math.ceil((Math.max(...all) + 1) / step) * step);
   const X = (y) => pl + (W - pl - pr) * (xs.indexOf(y) / Math.max(1, xs.length - 1));
   const Y = (v) => pt + (H - pt - pb) * (1 - (v - lo) / (hi - lo));
   let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Line chart of the gap over time">`;
-  const ticks = 4;
-  for (let i = 0; i <= ticks; i++) {
-    const v = lo + (hi - lo) * i / ticks;
+  for (let v = lo; v <= hi + 1e-9; v += step) {
     svg += `<line x1="${pl}" x2="${W - pr}" y1="${Y(v)}" y2="${Y(v)}" stroke="${css('--grid')}"/>
       <text x="${pl - 6}" y="${Y(v) + 4}" text-anchor="end">${fmt(v, 0)}</text>`;
   }
-  xs.forEach(y => svg += `<text x="${X(y)}" y="${H - 8}" text-anchor="middle">${y}</text>`);
+  // On narrow screens label every other year so the labels don't collide.
+  const every = W < 420 ? 2 : 1;
+  xs.forEach((y, i) => { if ((xs.length - 1 - i) % every === 0) svg += `<text x="${X(y)}" y="${H - 8}" text-anchor="middle">${y}</text>`; });
   series.forEach(s => {
     const pts = s.pts.filter(p => p.v != null && xs.includes(p.y));
     const col = css(s.key);
@@ -358,7 +404,6 @@ function renderTrend() {
   });
   svg += `<line id="xh" y1="${pt}" y2="${H - pb}" stroke="${css('--text-muted')}" stroke-width="1" visibility="hidden"/>
     <rect class="hit" x="${pl}" y="${pt}" width="${W - pl - pr}" height="${H - pt - pb}"/></svg>`;
-  const el = document.getElementById('trend');
   el.innerHTML = svg;
   const hit = el.querySelector('rect.hit'), xh = el.querySelector('#xh'), svgEl = el.querySelector('svg');
   hit.onmousemove = (e) => {
@@ -377,7 +422,12 @@ function renderTrend() {
 
 function render() { renderTiles(); renderMap(); renderRank(); renderBto(); renderTrend(); }
 render();
+// Frame the map on the areas that have data (works for any screen size).
+const pts = las.filter(d => d.latitude != null).map(d => [d.latitude, d.longitude]);
+if (pts.length) map.fitBounds(pts, { padding: [20, 20] });
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', render);
+let resizeTimer;
+addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { renderRank(); renderTrend(); }, 150); });
 </script>
 </body>
 </html>

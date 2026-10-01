@@ -4,6 +4,7 @@
   build      clean + join the raw files, load the database, create SQL views
   export     write dashboard CSVs / xlsx from the database
   dashboard  write a self-contained HTML preview of the dashboard
+  site       write a static website (index.html + data downloads) for GitHub Pages
   all        build + export + dashboard
 
 Add --sample to run everything on generated synthetic data instead.
@@ -19,7 +20,7 @@ from . import config
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="python -m tgm", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["download", "build", "export", "dashboard", "all"])
+    ap.add_argument("command", choices=["download", "build", "export", "dashboard", "site", "all"])
     ap.add_argument("--sample", action="store_true",
                     help="generate and use SYNTHETIC data (no downloads needed)")
     ap.add_argument("--raw-dir", type=Path, default=None, help=f"default: {config.RAW_DIR}")
@@ -27,6 +28,10 @@ def main(argv=None):
                     help="SQLite path or postgresql://user:pass@host/db (default: data/tutoring_gap.db)")
     ap.add_argument("--out", type=Path, default=config.OUTPUT_DIR, help="output folder")
     ap.add_argument("--years", nargs="*", default=config.KS4_YEARS, help="academic years to download")
+    ap.add_argument("--strict", action="store_true",
+                    help="download: exit with an error if any source couldn't be fetched")
+    ap.add_argument("--site-dir", type=Path, default=config.OUTPUT_DIR / "site",
+                    help="site: folder to write the static website to")
     args = ap.parse_args(argv)
 
     raw_dir = args.raw_dir or (config.SAMPLE_DIR if args.sample else config.RAW_DIR)
@@ -37,7 +42,9 @@ def main(argv=None):
         if args.sample:
             raise SystemExit("--sample doesn't download anything; run `build --sample`.")
         from .download import download_all
-        download_all(raw_dir, args.years)
+        missing = download_all(raw_dir, args.years)
+        if missing and args.strict:
+            raise SystemExit(1)
         return
 
     if args.sample and args.command in ("build", "all"):
@@ -60,6 +67,10 @@ def main(argv=None):
         from .dashboard import write_dashboard
         path = write_dashboard(db, args.out / "tutoring_gap_map.html", synthetic=args.sample)
         print(f"  HTML preview: {path}")
+    if args.command == "site":
+        from .site import build_site
+        print(f"Writing static site to {args.site_dir}")
+        build_site(db, args.site_dir, synthetic=args.sample)
     db.close()
 
 

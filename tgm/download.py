@@ -36,8 +36,9 @@ def _manual(what: str, landing: str, dest: Path, note: str = "") -> None:
           f"    and save it under {dest}{(chr(10) + '    ' + note) if note else ''}")
 
 
-def download_ks4(raw_dir: Path, years: list[str]) -> None:
+def download_ks4(raw_dir: Path, years: list[str]) -> list[str]:
     src = SOURCES["ks4"]
+    missing = []
     for year in years:
         dest = raw_dir / "ks4" / year
         if list(dest.glob("england_ks4*.csv")):
@@ -48,6 +49,7 @@ def download_ks4(raw_dir: Path, years: list[str]) -> None:
         if r is None:
             _manual(f"KS4 results for {year}", src["landing"], dest / "england_ks4final.csv",
                     "Choose: All of England > Key stage 4 results > CSV, then unzip.")
+            missing.append(f"ks4 {year}")
             continue
         dest.mkdir(parents=True, exist_ok=True)
         if r.content[:2] == b"PK":
@@ -56,12 +58,19 @@ def download_ks4(raw_dir: Path, years: list[str]) -> None:
                 for n in names:
                     (dest / Path(n).name).write_bytes(z.read(n))
                 print(f"    saved {', '.join(Path(n).name for n in names) or 'nothing (no england_ks4*.csv in zip)'}")
+            if not names:
+                missing.append(f"ks4 {year}")
+        elif r.content.lstrip()[:1] == b"<":
+            print("    got a web page, not a CSV (the download form has probably changed)")
+            _manual(f"KS4 results for {year}", src["landing"], dest / "england_ks4final.csv")
+            missing.append(f"ks4 {year}")
         else:
             (dest / "england_ks4final.csv").write_bytes(r.content)
             print("    saved england_ks4final.csv")
+    return missing
 
 
-def download_gias(raw_dir: Path) -> None:
+def download_gias(raw_dir: Path) -> list[str]:
     src = SOURCES["gias"]
     dest = raw_dir / "gias"
     dest.mkdir(parents=True, exist_ok=True)
@@ -77,31 +86,35 @@ def download_gias(raw_dir: Path) -> None:
         if links is not None:
             (dest / f"links_edubasealldata{date}.csv").write_bytes(links.content)
             print(f"  gias: saved links_edubasealldata{date}.csv")
-        return
+        return []
     _manual("Get Information About Schools", src["landing"], dest,
             "Download 'All establishment data' and 'All links data' (CSV).")
+    return ["gias"]
 
 
-def download_imd(raw_dir: Path) -> None:
+def download_imd(raw_dir: Path) -> list[str]:
     src = SOURCES["imd"]
     dest = raw_dir / "imd"
     if dest.exists() and any(dest.iterdir()):
         print("  imd: already present")
-        return
+        return []
     r = _get(src["url"], timeout=300)
     if r is None:
         _manual("the English Indices of Deprivation", src["landing"], dest,
                 "Use the LSOA-level file with scores (IoD2019 'File 7', or the IoD2025 equivalent).")
-        return
+        return ["imd"]
     dest.mkdir(parents=True, exist_ok=True)
     name = src["url"].rsplit("/", 1)[-1]
     (dest / name).write_bytes(r.content)
     print(f"  imd: saved {name}")
+    return []
 
 
-def download_all(raw_dir: Path, years: list[str]) -> None:
+def download_all(raw_dir: Path, years: list[str]) -> list[str]:
+    """Returns the sources that still need fetching by hand (empty = all done)."""
     print(f"Downloading into {raw_dir}")
-    download_ks4(raw_dir, years)
-    download_gias(raw_dir)
-    download_imd(raw_dir)
+    missing = download_ks4(raw_dir, years) + download_gias(raw_dir) + download_imd(raw_dir)
     print("Optional: put an ONS Postcode Directory CSV in data/raw/onspd/ to fill missing LSOAs.")
+    if missing:
+        print(f"Still missing: {', '.join(missing)}")
+    return missing

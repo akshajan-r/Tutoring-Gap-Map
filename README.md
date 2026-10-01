@@ -49,6 +49,30 @@ Outputs:
 | `data/tutoring_gap.db` | SQLite database: tables + analysis views |
 | `outputs/dashboard_data/*.csv`, `tutoring_gap_map.xlsx` | flat tables for Tableau Public / Power BI |
 | `outputs/tutoring_gap_map.html` | self-contained interactive preview (map, rankings, trends, beating-the-odds list) |
+| `outputs/site/` | `python -m tgm site`: the same page as `index.html` plus data downloads, ready to host |
+
+## Publish it as a website (GitHub Pages)
+
+The dashboard is a static page, so GitHub Pages can host it for free at
+**https://akshajan-r.github.io/Tutoring-Gap-Map/**. The workflow in
+[`.github/workflows/pages.yml`](.github/workflows/pages.yml) does the whole job on
+GitHub's servers: install, test, download the public data, build the database, run the
+SQL, write the site and deploy it.
+
+1. Merge this branch into `main` (Pages deploys from the default branch).
+2. Repo **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+3. **Actions → Publish site → Run workflow.**
+   - Leave *sample* unticked to publish real data. If any download fails, the run stops
+     before publishing, and its log names the file and the page to get it from.
+   - Tick *sample* to publish the synthetic demo straight away. It carries a
+     "synthetic data" banner.
+
+After that it rebuilds on the 2nd of each month (to pick up new results and school
+changes) and whenever the pipeline code on `main` changes. The site's footer lists the
+sources, method and caveats, and links the CSVs for download.
+
+To host it somewhere else (Netlify, a council intranet, etc.), run
+`python -m tgm site` and upload the `outputs/site/` folder as-is.
 
 ## Data sources
 
@@ -188,6 +212,7 @@ tgm/
   db.py          SQLite/Postgres wrapper
   export.py      CSV/xlsx extracts for Tableau / Power BI
   dashboard.py   HTML preview
+  site.py        static website for GitHub Pages
   sample.py      SYNTHETIC data generator in the real file layouts
 sql/
   01_base.sql              school-year view + England benchmark
@@ -198,6 +223,7 @@ sql/
   example_queries.sql      ad-hoc questions
 dashboard/       Tableau + Power BI build guides, DAX
 tests/           unit + end-to-end tests (incl. Postgres parity)
+.github/workflows/pages.yml   build from public data + deploy to GitHub Pages
 ```
 
 ## Tests
