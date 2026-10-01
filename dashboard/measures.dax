@@ -1,0 +1,59 @@
+// Tutoring Gap Map: Power BI measures. Tables: schools, local_authorities, beating_the_odds, national.
+// Attainment 8 is out of 90; /10 gives an average grade per subject.
+
+Disadv pupils =
+SUMX ( FILTER ( schools, NOT ISBLANK ( schools[att8_disadv] ) ), schools[n_disadv] )
+
+Disadv Att8 =
+DIVIDE (
+    SUMX ( FILTER ( schools, NOT ISBLANK ( schools[att8_disadv] ) ),
+           schools[n_disadv] * schools[att8_disadv] ),
+    [Disadv pupils]
+)
+
+Non-disadv Att8 =
+VAR rows = FILTER ( schools, NOT ISBLANK ( schools[att8_nondisadv] ) )
+RETURN DIVIDE (
+    SUMX ( rows, ( schools[total_pupils] - schools[n_disadv] ) * schools[att8_nondisadv] ),
+    SUMX ( rows, schools[total_pupils] - schools[n_disadv] )
+)
+
+// The England benchmark is the same on every row for a year: select a single year.
+National non-disadv Att8 =
+AVERAGE ( schools[national_att8_nondisadv] )
+
+Gap vs national =
+[National non-disadv Att8] - [Disadv Att8]
+
+Gap within area =
+[Non-disadv Att8] - [Disadv Att8]
+
+Gap (grades per subject) =
+DIVIDE ( [Gap vs national], 10 )
+
+Scale of need =
+[Disadv pupils] * [Gap vs national] / 10
+
+Schools beating the odds =
+CALCULATE (
+    DISTINCTCOUNT ( beating_the_odds[lineage_id] ),
+    LEFT ( beating_the_odds[evidence], 10 ) = "Consistent"
+)
+
+// Measure switcher: create a disconnected table
+//   Measure = DATATABLE("Measure", STRING, {{"Gap vs national"}, {"Gap within area"}, {"Scale of need"}})
+// and a slicer on it.
+Selected measure =
+SWITCH (
+    SELECTEDVALUE ( 'Measure'[Measure], "Gap vs national" ),
+    "Gap vs national", [Gap vs national],
+    "Gap within area", [Gap within area],
+    "Scale of need", [Scale of need]
+)
+
+// Rank of an LA by the gap, among LAs visible under the current filters.
+LA gap rank =
+IF (
+    HASONEVALUE ( schools[la_name] ),
+    RANKX ( ALLSELECTED ( schools[la_name] ), [Gap vs national], , DESC, DENSE )
+)

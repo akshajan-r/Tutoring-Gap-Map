@@ -1,0 +1,8 @@
+pandas>=2.0
+requests>=2.31
+openpyxl>=3.1      # IMD files are also published as .xlsx
+# Optional, only needed for --db postgresql://...
+sqlalchemy>=2.0
+psycopg[binary]>=3.1
+# Tests
+pytest>=8
