@@ -117,3 +117,18 @@ def test_lineage_refuses_same_year_clash():
     results = pd.DataFrame({"urn": [1, 2], "year_start": [2022, 2022]})
     out = build_lineage(gias, links, results).set_index("urn")
     assert out.loc[1, "lineage_id"] == 1 and out.loc[2, "lineage_id"] == 2
+
+
+def test_slim_ks4_keeps_what_read_ks4_needs(tmp_path):
+    p = tmp_path / "england_ks4final.csv"
+    cols = {"RECTYPE": ["1", "4"], "LEA": ["201", "201"], "URN": ["100001", ""],
+            "SCHNAME": ["A School", ""], "PCODE": ["AB1 2CD", ""], "TPUP": ["200", ""],
+            "PTFSM6CLA1A": ["25%", ""], "ATT8SCR_FSM6CLA1A": ["35.5", ""],
+            "ATT8SCR_NFSM6CLA1A": ["50.1", ""]}
+    cols.update({f"UNUSED{i}": ["9", "9"] for i in range(300)})
+    pd.DataFrame(cols).to_csv(p, index=False)
+    before = clean.read_ks4(p, "2022-2023")
+    size_before, size_after = clean.slim_ks4(p)
+    assert size_after < size_before / 5
+    assert "UNUSED0" not in pd.read_csv(p, nrows=0).columns
+    pd.testing.assert_frame_equal(clean.read_ks4(p, "2022-2023"), before)

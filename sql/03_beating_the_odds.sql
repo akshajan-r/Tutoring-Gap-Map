@@ -13,10 +13,15 @@
 -- squares, so it needs no stats package. The residual (actual minus expected)
 -- is scaled by its standard deviation to give residual_z.
 --
+-- Selective (grammar) schools are left out of the model: they admit pupils by
+-- ability, so their disadvantaged pupils are not comparable with other schools'.
+--
 -- A school is "beating the odds" in a year when it:
---   * is state-funded mainstream with >= min_disadv_cohort disadvantaged pupils,
---   * serves a deprived community (IMD decile <= deprived_imd_decile, or
---     >= deprived_pct_disadv % disadvantaged), and
+--   * is state-funded, mainstream, non-selective, with >= min_disadv_cohort
+--     disadvantaged pupils,
+--   * serves a deprived community: either it sits in IMD decile <= deprived_imd_decile
+--     AND >= deprived_area_min_pct_disadv % of its pupils are disadvantaged, or
+--     >= deprived_pct_disadv % of its pupils are disadvantaged wherever it is, and
 --   * has residual_z >= beating_odds_z.
 -- All thresholds come from the analysis_params table.
 -- =============================================================================
@@ -29,13 +34,15 @@ WITH p AS (
     SELECT
         MAX(CASE WHEN name = 'beating_odds_z' THEN value END) AS z_threshold,
         MAX(CASE WHEN name = 'deprived_imd_decile' THEN value END) AS deprived_decile,
-        MAX(CASE WHEN name = 'deprived_pct_disadv' THEN value END) AS deprived_pct
+        MAX(CASE WHEN name = 'deprived_pct_disadv' THEN value END) AS deprived_pct,
+        MAX(CASE WHEN name = 'deprived_area_min_pct_disadv' THEN value END) AS area_min_pct
     FROM analysis_params
 ),
 eligible AS (
     SELECT *
     FROM v_school_year
     WHERE is_state_mainstream = 1
+      AND COALESCE(admissions_policy, '') <> 'Selective'
       AND reportable = 1
       AND att8_disadv IS NOT NULL
       AND imd_score IS NOT NULL
@@ -98,7 +105,8 @@ flagged AS (
         r.*,
         sd.resid_sd,
         r.residual / NULLIF(sd.resid_sd, 0) AS residual_z,
-        CASE WHEN r.imd_decile <= p.deprived_decile OR r.pct_disadv >= p.deprived_pct
+        CASE WHEN (r.imd_decile <= p.deprived_decile AND r.pct_disadv >= p.area_min_pct)
+                  OR r.pct_disadv >= p.deprived_pct
              THEN 1 ELSE 0 END AS serves_deprived,
         p.z_threshold
     FROM resid r

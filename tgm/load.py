@@ -32,13 +32,31 @@ def log(msg: str) -> None:
 # Reading raw inputs
 # ---------------------------------------------------------------------------
 
+def read_ks4_results(ks4_dir: Path) -> pd.DataFrame:
+    """EES download for recent years, plus any hand-added england_ks4final.csv
+    files for years EES doesn't cover (EES wins where both have a year)."""
+    frames, sources = [], []
+    ees_path = clean.find_latest(ks4_dir, "ees_*.csv")
+    if ees_path:
+        ees = clean.read_ees_ks4(ees_path)
+        frames.append(ees)
+        sources += [f"{y} (EES)" for y in sorted(ees["academic_year"].unique())]
+    have = {y for f in frames for y in f["year_start"].unique()}
+    for year, path in clean.find_ks4_files(ks4_dir).items():
+        df = clean.read_ks4(path, year)
+        if df["year_start"].iat[0] in have:
+            continue
+        frames.append(df)
+        sources.append(f"{df['academic_year'].iat[0]} ({path.name})")
+    if not frames:
+        raise SystemExit(f"No KS4 results in {ks4_dir}: run `python -m tgm download`")
+    results = pd.concat(frames, ignore_index=True).sort_values(["year_start", "urn"], ignore_index=True)
+    log(f"KS4 results: {len(results):,} school-years: {', '.join(sorted(sources))}")
+    return results
+
+
 def read_inputs(raw_dir: Path) -> dict:
-    ks4_files = clean.find_ks4_files(raw_dir / "ks4")
-    if not ks4_files:
-        raise SystemExit(f"No KS4 files found under {raw_dir / 'ks4'}/<year>/england_ks4*.csv")
-    results = pd.concat([clean.read_ks4(p, y) for y, p in ks4_files.items()], ignore_index=True)
-    log(f"KS4 results: {len(results):,} school-years across {len(ks4_files)} years "
-        f"({', '.join(ks4_files)})")
+    results = read_ks4_results(raw_dir / "ks4")
 
     gias_path = clean.find_latest(raw_dir / "gias", "edubasealldata*.csv")
     if gias_path is None:
@@ -55,7 +73,8 @@ def read_inputs(raw_dir: Path) -> dict:
     if not imd_files:
         raise SystemExit(f"No deprivation file found in {raw_dir / 'imd'}")
     imd = clean.read_imd(imd_files[0])
-    log(f"IMD: {len(imd):,} LSOAs from {imd_files[0].name}")
+    log(f"IMD: {len(imd):,} LSOAs from {imd_files[0].name} "
+        f"(columns found: {', '.join(imd.attrs.get('found', []))})")
 
     onspd_path = clean.find_latest(raw_dir / "onspd", "*.csv")
     onspd = clean.read_onspd(onspd_path) if onspd_path else None
@@ -161,6 +180,7 @@ def params_table() -> pd.DataFrame:
         ("beating_odds_z", config.BEATING_ODDS_Z),
         ("deprived_imd_decile", config.DEPRIVED_IMD_DECILE),
         ("deprived_pct_disadv", config.DEPRIVED_PCT_DISADV),
+        ("deprived_area_min_pct_disadv", config.DEPRIVED_AREA_MIN_PCT_DISADV),
     ], columns=["name", "value"]).astype({"value": float})
 
 

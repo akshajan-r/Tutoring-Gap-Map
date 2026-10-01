@@ -135,6 +135,95 @@ def read_ks4(path: Path, year: str) -> pd.DataFrame:
     return out.reset_index(drop=True)
 
 
+# ---------------------------------------------------------------------------
+# KS4 results from Explore Education Statistics (tidy format)
+# ---------------------------------------------------------------------------
+
+# Columns of the EES "Key stage 4 institution level - Schools (performance)" file we use.
+EES_KS4_COLUMNS = [
+    "time_period", "school_urn", "school_name", "establishment_type_group",
+    "breakdown_topic", "disadvantage_status", "pupil_count",
+    "attainment8_average", "progress8_average", "engmath_94_percent",
+]
+_EES_GROUPS = {"Disadvantaged": "disadv", "Not known to be disadvantaged": "nondisadv"}
+
+
+def slim_ees_ks4(raw: pd.DataFrame) -> pd.DataFrame:
+    """Keep the overall and disadvantage-status rows and the columns we use (~5% of the file)."""
+    missing = [c for c in EES_KS4_COLUMNS if c not in raw.columns]
+    if missing:
+        raise ValueError(f"EES KS4 file is missing columns {missing} - has the data set changed?")
+    keep = raw["breakdown_topic"].isin(["Total", "Disadvantage status"])
+    return raw.loc[keep, EES_KS4_COLUMNS].reset_index(drop=True)
+
+
+def read_ees_ks4(path: Path) -> pd.DataFrame:
+    """EES long format (one row per school x year x breakdown) -> the read_ks4 layout."""
+    raw = slim_ees_ks4(read_csv_any_encoding(path))
+    raw["group"] = np.where(raw["breakdown_topic"] == "Total", "all",
+                            raw["disadvantage_status"].map(_EES_GROUPS))
+    raw = raw.dropna(subset=["group"])
+    raw["urn"] = pd.to_numeric(raw["school_urn"], errors="coerce")
+    raw = raw.dropna(subset=["urn"])
+    measures = {"pupil_count": "n", "attainment8_average": "att8",
+                "progress8_average": "p8", "engmath_94_percent": "basics94"}
+    for col in measures:
+        raw[col] = to_number(raw[col])
+    wide = raw.groupby(["time_period", "urn", "group"])[list(measures)].first().unstack("group")
+    wide.columns = [f"{measures[m]}_{g}" for m, g in wide.columns]
+    wide = wide.reset_index()
+    info = raw[raw["group"] == "all"].drop_duplicates(["time_period", "urn"]).set_index(["time_period", "urn"])
+
+    def col(name):
+        return wide[name] if name in wide.columns else np.nan
+
+    labels = wide["time_period"].map(academic_year_label)
+    keys = list(zip(wide["time_period"], wide["urn"]))
+    type_group = info["establishment_type_group"].reindex(keys).fillna("").values
+    out = pd.DataFrame({
+        "academic_year": [l for l, _ in labels],
+        "year_start": [y for _, y in labels],
+        "urn": wide["urn"].astype("int64"),
+        "ks4_school_name": info["school_name"].reindex(keys).values,
+        "ks4_postcode": np.nan,
+        "is_special": pd.Series(type_group).str.lower().str.contains("special").astype(int).values,
+        "total_pupils": col("n_all"),
+        "n_disadv": col("n_disadv"),
+        "n_nondisadv": col("n_nondisadv"),
+        "att8_all": col("att8_all"), "att8_disadv": col("att8_disadv"), "att8_nondisadv": col("att8_nondisadv"),
+        "p8_all": col("p8_all"), "p8_disadv": col("p8_disadv"), "p8_nondisadv": col("p8_nondisadv"),
+        "basics94_all": col("basics94_all"), "basics94_disadv": col("basics94_disadv"),
+        "basics94_nondisadv": col("basics94_nondisadv"),
+    })
+    out["n_nondisadv"] = out["n_nondisadv"].fillna(out["total_pupils"] - out["n_disadv"])
+    out["pct_disadv"] = 100 * out["n_disadv"] / out["total_pupils"]
+    for c in ("total_pupils", "n_disadv", "n_nondisadv"):
+        out[c] = out[c].round().astype("Int64")
+    return out[["academic_year", "year_start", "urn", "ks4_school_name", "ks4_postcode", "is_special",
+                *KS4_FIELDS]].reset_index(drop=True)
+
+
+# Identifier columns read_ks4 uses alongside KS4_FIELDS.
+KS4_ID_COLUMNS = ["RECTYPE", "LEA", "URN", "SCHNAME", "PCODE"]
+
+
+def slim_ks4(path: Path) -> tuple[int, int]:
+    """Rewrite a KS4 file in place with only the columns this project reads.
+
+    The full file has several hundred columns. Slimmed copies are small enough to
+    commit, so the GitHub Pages workflow can use them without downloading.
+    Returns (bytes before, bytes after).
+    """
+    before = path.stat().st_size
+    raw = read_csv_any_encoding(path)
+    wanted = KS4_ID_COLUMNS + [c for cands in KS4_FIELDS.values() for c in cands]
+    keep = [c for c in raw.columns if c.upper() in {w.upper() for w in wanted}]
+    if not any(c.upper() == "URN" for c in keep):
+        raise ValueError(f"{path}: no URN column - is this the school-level KS4 file?")
+    raw[keep].to_csv(path, index=False, encoding="utf-8")
+    return before, path.stat().st_size
+
+
 def find_ks4_files(ks4_dir: Path) -> dict[str, Path]:
     """{'2022-2023': path} for each year folder that has a KS4 school file.
 
@@ -277,9 +366,12 @@ def _read_imd_table(path: Path) -> pd.DataFrame:
 def read_imd(path: Path) -> pd.DataFrame:
     raw = _read_imd_table(path)
     out = pd.DataFrame(index=raw.index)
+    found = []
     for field, pattern in IMD_PATTERNS.items():
         col = _pick_regex(raw, pattern)
         out[field] = raw[col] if col else None
+        if col:
+            found.append(field)
     if out["lsoa_code"].isna().all():
         raise ValueError(f"{path}: couldn't find an 'LSOA code' column")
     for c in ("imd_score", "imd_rank", "imd_decile", "idaci_score", "idaci_decile", "population"):
@@ -295,7 +387,9 @@ def read_imd(path: Path) -> pd.DataFrame:
     out["imd_decile"] = out["imd_decile"].astype("Int64")
     out["idaci_decile"] = out["idaci_decile"].astype("Int64")
     out["lsoa_code"] = out["lsoa_code"].str.strip()
-    return out.dropna(subset=["lsoa_code"]).drop_duplicates("lsoa_code").reset_index(drop=True)
+    out = out.dropna(subset=["lsoa_code"]).drop_duplicates("lsoa_code").reset_index(drop=True)
+    out.attrs["found"] = found
+    return out
 
 
 # ---------------------------------------------------------------------------

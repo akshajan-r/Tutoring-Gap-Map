@@ -44,13 +44,19 @@ jobs:
       - name: Test
         run: python -m pytest -q
 
-      # --strict: if any source can't be fetched, stop here rather than publish a partial site.
+      # GCSE results (Explore Education Statistics API), GIAS and deprivation data.
+      # --strict: if anything can't be fetched, stop here rather than publish a partial site.
       - name: Download public data
         if: ${{ !inputs.sample }}
         run: python -m tgm download --strict
 
       - name: Build database and run SQL
         run: python -m tgm build ${{ inputs.sample && '--sample' || '' }}
+
+      # Headline numbers in the log, so each build can be sanity-checked.
+      - name: Data summary
+        if: ${{ !inputs.sample }}
+        run: python scripts/real_data_summary.py
 
       - name: Build site
         run: python -m tgm site ${{ inputs.sample && '--sample' || '' }} --site-dir _site

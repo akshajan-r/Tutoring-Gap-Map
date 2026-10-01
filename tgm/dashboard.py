@@ -184,12 +184,12 @@ a { color: var(--series-1); }
   <div class="grid section">
     <div class="card">
       <h2>Beating the odds</h2>
-      <p class="note">State mainstream schools in deprived areas (IMD decile 1-3 or 40%+ disadvantaged) whose disadvantaged pupils score well above what their deprivation predicts. Sorted by years beating the odds, then average size of the margin.</p>
+      <p class="note">Non-selective state schools serving deprived communities whose disadvantaged pupils score well above what their deprivation predicts. Sorted by years beating the odds, then average size of the margin.</p>
       <div class="scroll"><table id="bto"></table></div>
     </div>
     <div class="card">
       <h2 id="trend-title">Gap over time</h2>
-      <p class="note">Gap vs national non-disadvantaged, Attainment 8 points. No school tables for 2019-20 or 2020-21; 2021-22 grading was more generous.</p>
+      <p class="note" id="trend-note">Gap vs national non-disadvantaged, Attainment 8 points.</p>
       <div id="trend"></div>
       <div class="legend" id="trend-legend"></div>
     </div>
@@ -206,7 +206,7 @@ a { color: var(--series-1); }
     <h2>Method and caveats</h2>
     <ul>
       <li>"Disadvantaged" = eligible for free school meals in the last 6 years, or looked after. Averages are weighted by pupil numbers; schools with suppressed figures are left out.</li>
-      <li>Beating the odds: disadvantaged pupils' Attainment 8 compared with a regression on neighbourhood deprivation and the school's % disadvantaged. Listed schools score at least one standard deviation above it, are in IMD deciles 1-3 or 40%+ disadvantaged, and have 10+ disadvantaged pupils. It flags schools worth learning from; it doesn't prove what causes the result.</li>
+      <li>Beating the odds: disadvantaged pupils' Attainment 8 compared with a regression on neighbourhood deprivation and the school's % disadvantaged. Listed schools score at least one standard deviation above it and have 10+ disadvantaged pupils. They serve deprived communities: an IMD decile 1-3 neighbourhood with at least 25% of pupils disadvantaged, or 40%+ disadvantaged anywhere. Grammar schools are left out because they select pupils by ability. It flags schools worth learning from; it doesn't prove what causes the result.</li>
       <li>No school results were published for 2019-20 or 2020-21, and 2021-22 grading was more generous, so compare gaps rather than raw scores across years.</li>
       <li>Area circles sit at the average location of each local authority's schools. The school type filter applies to the tiles and the beating-the-odds list; area figures cover all school types.</li>
     </ul>
@@ -238,6 +238,8 @@ if (DATA.repo_url) {
 }
 
 const years = uniq(las.map(d => d.academic_year));
+if (years.some(y => y < '2022')) document.getElementById('trend-note').textContent +=
+  ' No school tables for 2019-20 or 2020-21; 2021-22 grading was more generous.';
 const state = { year: years[years.length - 1], region: 'All', type: 'All', measure: 'gap_vs_national', la: null };
 const measureLabel = { gap_vs_national: 'Gap vs national', gap_within_la: 'Gap within area', scale_of_need: 'Scale of need' };
 
