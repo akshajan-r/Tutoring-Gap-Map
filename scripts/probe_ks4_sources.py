@@ -1,60 +1,65 @@
-"""Temporary diagnostic: what can GitHub Actions reach for school-level KS4 data?"""
+"""Temporary diagnostic (round 2): does Explore Education Statistics have school-level KS4 files?"""
 import json
-import re
 
 import requests
 
 UA = {"User-Agent": "tutoring-gap-map/1.0 (+https://github.com/akshajan-r/Tutoring-Gap-Map)"}
-
-
-def show(label, r):
-    ctype = r.headers.get("content-type", "")
-    title = re.search(r"<title>(.*?)</title>", r.text[:5000], re.S | re.I) if "html" in ctype else None
-    hdrs = {k: v for k, v in r.headers.items() if k.lower() in ("server", "cf-ray", "x-azure-ref", "content-disposition", "location")}
-    print(f"[{label}] {r.status_code} {r.url}\n    type={ctype} len={len(r.content)} headers={hdrs}"
-          + (f"\n    title={title.group(1).strip()[:120]!r}" if title else "")
-          + ("" if "html" in ctype or "json" in ctype else f"\n    first bytes={r.content[:80]!r}"))
-
-
-def get(s, label, url, **kw):
-    try:
-        r = s.get(url, timeout=60, **kw)
-        show(label, r)
-        return r
-    except requests.RequestException as e:
-        print(f"[{label}] {type(e).__name__}: {e}")
-
-
+PUB = "c8756008-ed50-4632-9b96-01b5ca002a43"   # 'Key stage 4 performance' (found in round 1)
+API = "https://api.education.gov.uk/statistics/v1"
+CONTENT = "https://content.explore-education-statistics.service.gov.uk/api"
 s = requests.Session()
 s.headers.update(UA)
 
-print("=== Compare School Performance ===")
-get(s, "csp landing", "https://www.compare-school-performance.service.gov.uk/download-data")
-get(s, "csp download (after landing, with cookies)",
-    "https://www.compare-school-performance.service.gov.uk/download-data?download=true&regions=0&filters=KS4&fileformat=csv&year=2023-2024&meta=false")
 
-print("=== Find school and college performance data ===")
-get(s, "fscpd landing", "https://www.find-school-performance-data.service.gov.uk/")
-get(s, "fscpd download-data", "https://www.find-school-performance-data.service.gov.uk/download-data")
+def get(label, url, show_body=400):
+    try:
+        r = s.get(url, timeout=60)
+    except requests.RequestException as e:
+        print(f"[{label}] {type(e).__name__}: {e}")
+        return None
+    print(f"[{label}] {r.status_code} {url}  type={r.headers.get('content-type')} len={len(r.content)}")
+    if not r.ok:
+        print("    body:", r.text[:show_body].replace("\n", " "))
+    return r
 
-print("=== Explore Education Statistics content API ===")
-for slug in ("key-stage-4-performance", "key-stage-4-performance-revised"):
-    r = get(s, f"ees release {slug}",
-            f"https://content.explore-education-statistics.service.gov.uk/api/publications/{slug}/releases/latest")
+
+def dump(obj, depth=0, maxlist=60):
+    """Print names/titles/ids found anywhere in a JSON object."""
+    if isinstance(obj, dict):
+        bits = {k: obj[k] for k in ("id", "title", "name", "fileName", "slug", "summary", "size", "releaseId", "timePeriods", "latestReleaseId")
+                if k in obj and not isinstance(obj[k], (dict, list))}
+        if bits:
+            print("    " * depth + json.dumps(bits)[:300])
+        for k, v in obj.items():
+            if isinstance(v, (dict, list)):
+                if isinstance(v, list) and v and not isinstance(v[0], (dict, list)):
+                    continue
+                print("    " * depth + f"  .{k}:")
+                dump(v, depth + 1, maxlist)
+    elif isinstance(obj, list):
+        for x in obj[:maxlist]:
+            dump(x, depth, maxlist)
+
+
+print("=== Public API: data sets for KS4 performance ===")
+for q in ("?page=1&pageSize=20", "", "?pageSize=20"):
+    r = get("api data-sets", f"{API}/publications/{PUB}/data-sets{q}")
     if r is not None and r.ok:
-        j = r.json()
-        print("    keys:", list(j)[:40])
-        print("    title:", j.get("title"), "| slug:", j.get("slug"), "| id:", j.get("id"))
-        for key in ("downloadFiles", "dataFiles", "dataSets", "files"):
-            for f in j.get(key) or []:
-                print(f"    {key}: " + json.dumps({k: f.get(k) for k in ("id", "name", "fileName", "size", "type", "subjectId") if k in f}))
+        dump(r.json())
+        break
 
-print("=== Explore Education Statistics public API ===")
-r = get(s, "ees api publications", "https://api.education.gov.uk/statistics/v1/publications?search=key%20stage%204&pageSize=20")
-if r is not None and r.ok:
-    for p in r.json().get("results", []):
-        print(f"    pub {p.get('id')} {p.get('title')!r}")
-        d = get(s, "  data-sets", f"https://api.education.gov.uk/statistics/v1/publications/{p['id']}/data-sets?pageSize=50")
-        if d is not None and d.ok:
-            for ds in d.json().get("results", []):
-                print(f"      ds {ds.get('id')} {ds.get('title')!r}")
+print("=== Content API: publication + releases ===")
+for path in (f"publications/key-stage-4-performance/title", f"publications/key-stage-4-performance/releases",
+             f"publications/key-stage-4-performance/releases/latest", f"publication/key-stage-4-performance/releases/latest"):
+    r = get("content", f"{CONTENT}/{path}")
+    if r is not None and r.ok:
+        dump(r.json(), maxlist=15)
+
+print("=== Content API: data catalogue for the publication ===")
+for path in (f"data-sets?publicationId={PUB}&latestOnly=true&pageSize=100",
+             f"data-sets?publicationId={PUB}&latestOnly=false&pageSize=100",
+             f"data-set-files?publicationId={PUB}&latestOnly=false&pageSize=100",
+             f"data-set-files?searchTerm=school%20level%20key%20stage%204&pageSize=50"):
+    r = get("catalogue", f"{CONTENT}/{path}")
+    if r is not None and r.ok:
+        dump(r.json(), maxlist=100)
