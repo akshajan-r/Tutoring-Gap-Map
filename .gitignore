@@ -1,7 +1,10 @@
 __pycache__/
 *.pyc
 .pytest_cache/
-data/raw/
+# Raw downloads stay local, except the (slimmed) KS4 results, which the
+# Pages workflow can't download because the performance-tables site blocks scripts.
+data/raw/*
+!data/raw/ks4/
 data/sample/
 data/*.db
 outputs/

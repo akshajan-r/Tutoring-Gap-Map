@@ -61,14 +61,25 @@ SQL, write the site and deploy it.
 
 1. Merge this branch into `main` (Pages deploys from the default branch).
 2. Repo **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-3. **Actions → Publish site → Run workflow.**
+3. **Add the GCSE results files (once, then once a year).** The performance-tables site
+   returns HTTP 403 to scripted downloads, including from GitHub's servers, so these
+   are fetched in a browser and committed. GIAS and the deprivation index are still
+   downloaded fresh by the workflow.
+   - For each year, choose *All of England → Key stage 4 results → CSV*, unzip, and save
+     `england_ks4final.csv` as `data/raw/ks4/<year>/england_ks4final.csv`
+     (e.g. `data/raw/ks4/2023-2024/`). The years are listed in `tgm/config.py`.
+   - Run `python -m tgm slim`. It cuts each file to the ~20 columns used, from several MB
+     each to a fraction of that.
+   - `git add data/raw/ks4 && git commit -m "Add KS4 results" && git push`
+4. **Actions → Publish site → Run workflow.**
    - Leave *sample* unticked to publish real data. If any download fails, the run stops
      before publishing, and its log names the file and the page to get it from.
    - Tick *sample* to publish the synthetic demo straight away. It carries a
      "synthetic data" banner.
 
-After that it rebuilds on the 2nd of each month (to pick up new results and school
-changes) and whenever the pipeline code on `main` changes. The site's footer lists the
+After that it rebuilds on the 2nd of each month (to pick up school openings, closures
+and conversions from GIAS) and whenever the pipeline code on `main` changes. When a new
+year's GCSE results come out, add the year to `KS4_YEARS` in `tgm/config.py` and repeat step 3. The site's footer lists the
 sources, method and caveats, and links the CSVs for download.
 
 To host it somewhere else (Netlify, a council intranet, etc.), run
@@ -97,7 +108,9 @@ data/raw/onspd/<postcode directory>.csv           # optional
 ```
 
 On the performance-tables site choose *All of England → Key stage 4 results →
-CSV* for each year. Years are set in `tgm/config.py`.
+CSV* for each year. Years are set in `tgm/config.py`. The site blocks scripted
+downloads (HTTP 403), so the KS4 files always come by hand. `python -m tgm slim`
+shrinks them so they can be committed (`data/raw/ks4/` is the one raw folder git tracks).
 
 ## How the pipeline joins things
 

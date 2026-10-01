@@ -44,7 +44,9 @@ jobs:
       - name: Test
         run: python -m pytest -q
 
-      # --strict: if any source can't be fetched, stop here rather than publish a partial site.
+      # KS4 results are committed under data/raw/ks4 (the performance-tables site blocks
+      # scripted downloads), so this skips them and fetches GIAS + deprivation data.
+      # --strict: if anything is still missing, stop here rather than publish a partial site.
       - name: Download public data
         if: ${{ !inputs.sample }}
         run: python -m tgm download --strict

@@ -5,6 +5,7 @@
   export     write dashboard CSVs / xlsx from the database
   dashboard  write a self-contained HTML preview of the dashboard
   site       write a static website (index.html + data downloads) for GitHub Pages
+  slim       cut the KS4 files in data/raw/ks4 down to the columns used, so they can be committed
   all        build + export + dashboard
 
 Add --sample to run everything on generated synthetic data instead.
@@ -20,7 +21,7 @@ from . import config
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="python -m tgm", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["download", "build", "export", "dashboard", "site", "all"])
+    ap.add_argument("command", choices=["download", "build", "export", "dashboard", "site", "slim", "all"])
     ap.add_argument("--sample", action="store_true",
                     help="generate and use SYNTHETIC data (no downloads needed)")
     ap.add_argument("--raw-dir", type=Path, default=None, help=f"default: {config.RAW_DIR}")
@@ -45,6 +46,17 @@ def main(argv=None):
         missing = download_all(raw_dir, args.years)
         if missing and args.strict:
             raise SystemExit(1)
+        return
+
+    if args.command == "slim":
+        from .clean import find_ks4_files, slim_ks4
+        files = find_ks4_files(raw_dir / "ks4")
+        if not files:
+            raise SystemExit(f"No KS4 files under {raw_dir / 'ks4'}/<year>/")
+        for year, path in files.items():
+            before, after = slim_ks4(path)
+            print(f"  {year}: {path.name} {before / 1e6:.1f} MB -> {after / 1e6:.2f} MB")
+        print("Commit them with: git add data/raw/ks4 && git commit -m 'Add KS4 results'")
         return
 
     if args.sample and args.command in ("build", "all"):

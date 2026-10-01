@@ -135,6 +135,27 @@ def read_ks4(path: Path, year: str) -> pd.DataFrame:
     return out.reset_index(drop=True)
 
 
+# Identifier columns read_ks4 uses alongside KS4_FIELDS.
+KS4_ID_COLUMNS = ["RECTYPE", "LEA", "URN", "SCHNAME", "PCODE"]
+
+
+def slim_ks4(path: Path) -> tuple[int, int]:
+    """Rewrite a KS4 file in place with only the columns this project reads.
+
+    The full file has several hundred columns. Slimmed copies are small enough to
+    commit, so the GitHub Pages workflow can use them without downloading.
+    Returns (bytes before, bytes after).
+    """
+    before = path.stat().st_size
+    raw = read_csv_any_encoding(path)
+    wanted = KS4_ID_COLUMNS + [c for cands in KS4_FIELDS.values() for c in cands]
+    keep = [c for c in raw.columns if c.upper() in {w.upper() for w in wanted}]
+    if not any(c.upper() == "URN" for c in keep):
+        raise ValueError(f"{path}: no URN column - is this the school-level KS4 file?")
+    raw[keep].to_csv(path, index=False, encoding="utf-8")
+    return before, path.stat().st_size
+
+
 def find_ks4_files(ks4_dir: Path) -> dict[str, Path]:
     """{'2022-2023': path} for each year folder that has a KS4 school file.
 

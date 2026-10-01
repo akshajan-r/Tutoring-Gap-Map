@@ -48,7 +48,9 @@ def download_ks4(raw_dir: Path, years: list[str]) -> list[str]:
         r = _get(src["url"].format(year=year), timeout=300)
         if r is None:
             _manual(f"KS4 results for {year}", src["landing"], dest / "england_ks4final.csv",
-                    "Choose: All of England > Key stage 4 results > CSV, then unzip.")
+                    "Choose: All of England > Key stage 4 results > CSV, then unzip.\n"
+                    "    The site blocks scripted downloads, so do this in a browser, then run\n"
+                    "    `python -m tgm slim` and commit data/raw/ks4/ (see README).")
             missing.append(f"ks4 {year}")
             continue
         dest.mkdir(parents=True, exist_ok=True)
