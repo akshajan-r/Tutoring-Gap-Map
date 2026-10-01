@@ -61,25 +61,15 @@ SQL, write the site and deploy it.
 
 1. Merge this branch into `main` (Pages deploys from the default branch).
 2. Repo **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-3. **Add the GCSE results files (once, then once a year).** The performance-tables site
-   returns HTTP 403 to scripted downloads, including from GitHub's servers, so these
-   are fetched in a browser and committed. GIAS and the deprivation index are still
-   downloaded fresh by the workflow.
-   - For each year, choose *All of England → Key stage 4 results → CSV*, unzip, and save
-     `england_ks4final.csv` as `data/raw/ks4/<year>/england_ks4final.csv`
-     (e.g. `data/raw/ks4/2023-2024/`). The years are listed in `tgm/config.py`.
-   - Run `python -m tgm slim`. It cuts each file to the ~20 columns used, from several MB
-     each to a fraction of that.
-   - `git add data/raw/ks4 && git commit -m "Add KS4 results" && git push`
-4. **Actions → Publish site → Run workflow.**
+3. **Actions → Publish site → Run workflow.**
    - Leave *sample* unticked to publish real data. If any download fails, the run stops
      before publishing, and its log names the file and the page to get it from.
    - Tick *sample* to publish the synthetic demo straight away. It carries a
      "synthetic data" banner.
 
 After that it rebuilds on the 2nd of each month (to pick up school openings, closures
-and conversions from GIAS) and whenever the pipeline code on `main` changes. When a new
-year's GCSE results come out, add the year to `KS4_YEARS` in `tgm/config.py` and repeat step 3. The site's footer lists the
+and conversions from GIAS, and new GCSE results when DfE adds a year to the data set) and
+whenever the pipeline code on `main` changes. The site's footer lists the
 sources, method and caveats, and links the CSVs for download.
 
 To host it somewhere else (Netlify, a council intranet, etc.), run
@@ -91,26 +81,31 @@ All published under the [Open Government Licence v3.0](https://www.nationalarchi
 
 | Source | File | Used for |
 |---|---|---|
-| DfE school performance tables ([Compare School Performance download](https://www.compare-school-performance.service.gov.uk/download-data)) | `england_ks4final.csv` per year | Attainment 8, Progress 8 and English & maths 4+ for disadvantaged and other pupils |
+| DfE [Key stage 4 performance](https://explore-education-statistics.service.gov.uk/find-statistics/key-stage-4-performance), via the [Explore Education Statistics API](https://api.education.gov.uk/statistics/v1/data-sets/19e39901-a96c-be76-b9c2-6af54ae076d2) | "Key stage 4 institution level – Schools (performance)": every school, 2022/23 onwards | Attainment 8, Progress 8 and English & maths 4+ for disadvantaged and other pupils |
+| *(optional, older years)* [Compare School Performance download](https://www.compare-school-performance.service.gov.uk/download-data) | `england_ks4final.csv` per year | 2018/19 and 2021/22 school results, which the API doesn't have |
 | [Get Information About Schools](https://get-information-schools.service.gov.uk/Downloads) | `edubasealldataYYYYMMDD.csv`, `links_edubasealldataYYYYMMDD.csv` | location, LA, region, school type, LSOA; predecessor/successor URNs |
 | [English Indices of Deprivation](https://www.gov.uk/government/collections/english-indices-of-deprivation) (IoD2019 or IoD2025) | LSOA-level file with scores (IoD2019 "File 7") | neighbourhood deprivation (IMD, IDACI) |
 | [ONS Postcode Directory](https://geoportal.statistics.gov.uk/) *(optional)* | ONSPD / NSPL CSV | postcode → LSOA where GIAS has none |
 
-If `python -m tgm download` can't reach a source (the endpoints change; the
-script was written without being able to reach them), download by hand into:
+`python -m tgm download` fetches the three required sources. If one fails, it prints
+where to download it by hand. The files go here:
 
 ```
-data/raw/ks4/2023-2024/england_ks4final.csv      # one folder per academic year
+data/raw/ks4/ees_ks4_schools.csv                 # written by the downloader
+data/raw/ks4/2021-2022/england_ks4final.csv      # optional older years, one folder each
 data/raw/gias/edubasealldata20260930.csv
 data/raw/gias/links_edubasealldata20260930.csv
 data/raw/imd/<IoD LSOA scores>.csv  (or .xlsx)
 data/raw/onspd/<postcode directory>.csv           # optional
 ```
 
-On the performance-tables site choose *All of England → Key stage 4 results →
-CSV* for each year. Years are set in `tgm/config.py`. The site blocks scripted
-downloads (HTTP 403), so the KS4 files always come by hand. `python -m tgm slim`
-shrinks them so they can be committed (`data/raw/ks4/` is the one raw folder git tracks).
+**Adding years before 2022/23 (optional).** The API starts at 2022/23. Earlier school
+results only exist on the Compare School Performance site, which blocks scripted
+downloads (HTTP 403), so they have to come from a browser. On that site, choose
+*All of England → Key stage 4 results → CSV* for 2018-2019 and 2021-2022, then save each
+file as `data/raw/ks4/<year>/england_ks4final.csv`. Run `python -m tgm slim` to cut each
+file to the columns used, then commit `data/raw/ks4/` (the one raw folder git tracks).
+The pipeline uses these files only for years the API doesn't cover.
 
 ## How the pipeline joins things
 
@@ -168,9 +163,17 @@ disadvantaged Att8 ≈ b0 + b_imd × neighbourhood IMD score + b_pct × % disadv
 A school's residual (actual − expected) is divided by the residual standard
 deviation to give `residual_z`. A school is **beating the odds** in a year when it:
 
-- has at least 10 disadvantaged pupils in the year group,
-- serves a deprived community (IMD decile 1–3, or ≥40% disadvantaged), and
+- is a non-selective, state-funded mainstream school with at least 10 disadvantaged pupils
+  in the year group,
+- serves a deprived community: it's in an IMD decile 1–3 neighbourhood *and* at least 25%
+  of its pupils are disadvantaged (about the national rate), or at least 40% are
+  disadvantaged wherever it is, and
 - has `residual_z ≥ 1`.
+
+Selective (grammar) schools are left out of the model. They admit pupils by ability, so
+their disadvantaged pupils score far above any deprivation-based prediction. Without this
+rule they filled the top of the list. The neighbourhood rule also needs a disadvantaged
+intake, because a school can sit in a deprived area while taking few disadvantaged pupils.
 
 `v_beating_the_odds` then follows each school across years and URN changes:
 **"Consistent (2+ years)"** is the list worth learning from, because one good year can be
@@ -183,9 +186,10 @@ The test suite checks the SQL coefficients against numpy's least squares.
 
 ## Caveats (please read before quoting numbers)
 
-- **No 2019-20 or 2020-21 school tables** (exams cancelled), and 2021-22 grading was
-  deliberately more generous. Compare gaps against the national gap rather than raw scores
-  across years.
+- **Years covered**: the automatic download starts at 2022/23 (see above to add older years).
+  There are no 2019-20 or 2020-21 school tables (exams were cancelled), and 2021-22 grading
+  was deliberately more generous. Compare gaps against the national gap rather than raw
+  scores across years.
 - **No Progress 8 for 2024-25** (and 2025-26): those cohorts had no KS2 tests in 2020/2021.
   The analysis uses Attainment 8, which is always available.
 - **Suppression**: small cohorts are suppressed by DfE, so small schools drop out

@@ -10,6 +10,8 @@ What the generator plants so the analysis has something to find:
     (with a London-style advantage in one region)
   * ~3% of schools in deprived areas get a big boost for disadvantaged
     pupils, which the beating-the-odds query should pick up
+  * grammar (selective) schools whose pupils all score highly, which must NOT
+    show up as beating the odds
   * academy conversions mid-series: most recorded in the GIAS links file, a
     few only matchable by postcode and name
   * suppressed cells (SUPP, NE, LOWCOV), percentages written as "23%",
@@ -116,6 +118,11 @@ def generate(out_dir: Path, seed: int = 42, years: list[str] | None = None) -> P
             if rng.random() < 0.08:
                 nm = f"St {rng.choice(['Thérèse', 'Anne', 'Bede', 'Hilda', 'Aidan'])}'s Catholic {rng.choice(SCHOOL_SUFFIX)}"
             beacon = lsoa["imd_decile"] <= 3 and rng.random() < 0.07
+            # Grammar schools: select by ability, so everyone (disadvantaged pupils
+            # included) scores far above prediction. The analysis must exclude them.
+            grammar = not beacon and t[1] == "Academies" and rng.random() < 0.08
+            if grammar:
+                nm = f"{w1} Grammar School"
             schools.append(dict(
                 urn=urn, name=f"{la.la_name} {nm}" if rng.random() < 0.3 else nm,
                 la_code=la.la_code, la_name=la.la_name, region=la.region,
@@ -126,7 +133,7 @@ def generate(out_dir: Path, seed: int = 42, years: list[str] | None = None) -> P
                 postcode=f"ZZ{la.la_code - 790} {rng.integers(1, 10)}{rng.choice(list('ABDEFGHJLNPQRSTUWXY'))}{rng.choice(list('ABDEFGHJLNPQRSTUWXY'))}",
                 size=int(rng.integers(70, 300)),
                 pct=float(np.clip(4 + 0.75 * lsoa["imd_score"] + rng.normal(0, 8), 2, 85)),
-                eff=rng.normal(0, 3), beacon=12.0 if beacon else 0.0,
+                eff=rng.normal(0, 3), beacon=12.0 if beacon else 0.0, grammar=18.0 if grammar else 0.0,
                 open_date="01-09-1975", close_date="", status="Open",
                 la_eff_d=la.eff_d, la_eff_nd=la.eff_nd, la_trend=la.trend,
             ))
@@ -175,8 +182,8 @@ def generate(out_dir: Path, seed: int = 42, years: list[str] | None = None) -> P
             pct = 0.0 if indep else float(np.clip(s.pct + rng.normal(0, 2), 0, 95))
             n_d = int(round(tpup * pct / 100))
             ye = YEAR_EFFECT.get(y0, 0.0) + s.la_trend * (y0 - 2018) / 3
-            nd = 51 - 0.05 * s.imd_score + s.eff + s.la_eff_nd + ye + rng.normal(0, 2)
-            d = (38 - 0.11 * s.imd_score - 0.07 * pct + s.eff + s.la_eff_d + ye + s.beacon
+            nd = 51 - 0.05 * s.imd_score + s.eff + s.grammar + s.la_eff_nd + ye + rng.normal(0, 2)
+            d = (38 - 0.11 * s.imd_score - 0.07 * pct + s.eff + s.grammar + s.la_eff_d + ye + s.beacon
                  + rng.normal(0, 3.5 / np.sqrt(max(n_d, 1) / 20)))
             if special:
                 nd, d = nd - 30, d - 30
@@ -229,7 +236,8 @@ def generate(out_dir: Path, seed: int = 42, years: list[str] | None = None) -> P
         "CloseDate": gias["close_date"], "PhaseOfEducation (name)": "Secondary",
         "StatutoryLowAge": 11, "StatutoryHighAge": 16, "Gender (name)": "Mixed",
         "ReligiousCharacter (name)": np.where(gias["name"].str.startswith("St "), "Roman Catholic", "Does not apply"),
-        "AdmissionsPolicy (name)": "Non-selective", "Postcode": gias["postcode"],
+        "AdmissionsPolicy (name)": np.where(gias["grammar"] > 0, "Selective", "Non-selective"),
+        "Postcode": gias["postcode"],
         "GOR (name)": gias["region"], "DistrictAdministrative (code)": gias["district_code"],
         "DistrictAdministrative (name)": gias["district_name"], "UrbanRural (name)": "(England/Wales) Urban city and town",
         "Trusts (name)": np.where(gias["group"] == "Academies", "Sample Learning Trust", ""),

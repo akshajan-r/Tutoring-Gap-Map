@@ -1,4 +1,4 @@
-"""Print a short summary of a real-data build (used by the temporary check workflow)."""
+"""Print headline numbers from a built database (the Pages workflow runs this on every build)."""
 import sqlite3
 import sys
 

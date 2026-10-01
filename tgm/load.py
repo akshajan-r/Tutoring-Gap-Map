@@ -73,7 +73,8 @@ def read_inputs(raw_dir: Path) -> dict:
     if not imd_files:
         raise SystemExit(f"No deprivation file found in {raw_dir / 'imd'}")
     imd = clean.read_imd(imd_files[0])
-    log(f"IMD: {len(imd):,} LSOAs from {imd_files[0].name}")
+    log(f"IMD: {len(imd):,} LSOAs from {imd_files[0].name} "
+        f"(columns found: {', '.join(imd.attrs.get('found', []))})")
 
     onspd_path = clean.find_latest(raw_dir / "onspd", "*.csv")
     onspd = clean.read_onspd(onspd_path) if onspd_path else None
@@ -179,6 +180,7 @@ def params_table() -> pd.DataFrame:
         ("beating_odds_z", config.BEATING_ODDS_Z),
         ("deprived_imd_decile", config.DEPRIVED_IMD_DECILE),
         ("deprived_pct_disadv", config.DEPRIVED_PCT_DISADV),
+        ("deprived_area_min_pct_disadv", config.DEPRIVED_AREA_MIN_PCT_DISADV),
     ], columns=["name", "value"]).astype({"value": float})
 
 

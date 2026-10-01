@@ -366,9 +366,12 @@ def _read_imd_table(path: Path) -> pd.DataFrame:
 def read_imd(path: Path) -> pd.DataFrame:
     raw = _read_imd_table(path)
     out = pd.DataFrame(index=raw.index)
+    found = []
     for field, pattern in IMD_PATTERNS.items():
         col = _pick_regex(raw, pattern)
         out[field] = raw[col] if col else None
+        if col:
+            found.append(field)
     if out["lsoa_code"].isna().all():
         raise ValueError(f"{path}: couldn't find an 'LSOA code' column")
     for c in ("imd_score", "imd_rank", "imd_decile", "idaci_score", "idaci_decile", "population"):
@@ -384,7 +387,9 @@ def read_imd(path: Path) -> pd.DataFrame:
     out["imd_decile"] = out["imd_decile"].astype("Int64")
     out["idaci_decile"] = out["idaci_decile"].astype("Int64")
     out["lsoa_code"] = out["lsoa_code"].str.strip()
-    return out.dropna(subset=["lsoa_code"]).drop_duplicates("lsoa_code").reset_index(drop=True)
+    out = out.dropna(subset=["lsoa_code"]).drop_duplicates("lsoa_code").reset_index(drop=True)
+    out.attrs["found"] = found
+    return out
 
 
 # ---------------------------------------------------------------------------

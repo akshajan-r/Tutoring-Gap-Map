@@ -78,7 +78,10 @@ def test_beating_the_odds_recovers_planted_schools(q, sample_dir):
 def test_beating_the_odds_rules(q):
     bto = q("SELECT * FROM v_beating_the_odds")
     assert (bto.n_disadv >= 10).all()
-    assert ((bto.imd_decile <= 3) | (bto.pct_disadv >= 40)).all()
+    assert (((bto.imd_decile <= 3) & (bto.pct_disadv >= 25)) | (bto.pct_disadv >= 40)).all()
+    selective = q("SELECT lineage_id FROM schools WHERE admissions_policy = 'Selective'")
+    assert len(selective) and not bto.lineage_id.isin(selective.lineage_id).any()
+    assert q("SELECT COUNT(*) n FROM v_school_odds WHERE admissions_policy = 'Selective'").n[0] == 0
     assert (bto.years_beating_odds >= 1).all() and bto.lineage_id.is_unique
 
 

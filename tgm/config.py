@@ -43,12 +43,14 @@ SOURCES = {
         "links_url": "https://ea-edubase-api-prod.azurewebsites.net/edubase/downloads/public/links_edubasealldata{date}.csv",
     },
     "imd": {
-        # English Indices of Deprivation. File 7 ("all ranks, deciles and scores")
-        # is the one we want: it has IMD and IDACI scores per LSOA.
-        "landing": "https://www.gov.uk/government/collections/english-indices-of-deprivation",
+        # English Indices of Deprivation 2025, File 7 ("all ranks, scores, deciles and
+        # population denominators"): IMD and IDACI scores per LSOA. IoD2025 uses 2021
+        # LSOA codes, which is what GIAS now gives each school (IoD2019 used 2011 codes
+        # and matched only ~95% of schools).
+        "landing": "https://www.gov.uk/government/statistics/english-indices-of-deprivation-2025",
         "url": (
-            "https://assets.publishing.service.gov.uk/media/5dc407b440f0b6379a7acc8d/"
-            "File_7_-_All_IoD2019_Scores__Ranks__Deciles_and_Population_Denominators_3.csv"
+            "https://assets.publishing.service.gov.uk/media/691ded56d140bbbaa59a2a7d/"
+            "File_7_IoD2025_All_Ranks_Scores_Deciles_Population_Denominators.csv"
         ),
     },
 }
@@ -57,5 +59,9 @@ SOURCES = {
 # SQL views read them from the database rather than hard-coding them.
 MIN_DISADV_COHORT = 10      # ignore schools with fewer disadvantaged pupils in the year group
 BEATING_ODDS_Z = 1.0        # residual z-score needed to count as beating the odds
-DEPRIVED_IMD_DECILE = 3     # "serves a deprived community": neighbourhood in IMD deciles 1-3 ...
-DEPRIVED_PCT_DISADV = 40.0  # ... or at least this % of the year group is disadvantaged
+# "Serves a deprived community" (for beating the odds) means either:
+DEPRIVED_IMD_DECILE = 3             # neighbourhood in IMD deciles 1-3 ...
+DEPRIVED_AREA_MIN_PCT_DISADV = 25.0 # ... AND an intake at least this % disadvantaged (about the national rate)
+DEPRIVED_PCT_DISADV = 40.0          # or, wherever it is, at least this % of the year group disadvantaged
+# Selective (grammar) schools pick pupils by ability, so they are left out of the
+# beating-the-odds model: their disadvantaged pupils are not a like-for-like group.
