@@ -96,7 +96,7 @@ def download_imd(raw_dir: Path) -> list[str]:
     r = _get(src["url"], timeout=300)
     if r is None:
         _manual("the English Indices of Deprivation", src["landing"], dest,
-                "Use the LSOA-level file with scores (IoD2019 'File 7', or the IoD2025 equivalent).")
+                "Use File 7 (all ranks, scores, deciles) of the latest IoD release.")
         return ["imd"]
     dest.mkdir(parents=True, exist_ok=True)
     name = src["url"].rsplit("/", 1)[-1]

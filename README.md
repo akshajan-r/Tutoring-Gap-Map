@@ -84,7 +84,7 @@ All published under the [Open Government Licence v3.0](https://www.nationalarchi
 | DfE [Key stage 4 performance](https://explore-education-statistics.service.gov.uk/find-statistics/key-stage-4-performance), via the [Explore Education Statistics API](https://api.education.gov.uk/statistics/v1/data-sets/19e39901-a96c-be76-b9c2-6af54ae076d2) | "Key stage 4 institution level – Schools (performance)": every school, 2022/23 onwards | Attainment 8, Progress 8 and English & maths 4+ for disadvantaged and other pupils |
 | *(optional, older years)* [Compare School Performance download](https://www.compare-school-performance.service.gov.uk/download-data) | `england_ks4final.csv` per year | 2018/19 and 2021/22 school results, which the API doesn't have |
 | [Get Information About Schools](https://get-information-schools.service.gov.uk/Downloads) | `edubasealldataYYYYMMDD.csv`, `links_edubasealldataYYYYMMDD.csv` | location, LA, region, school type, LSOA; predecessor/successor URNs |
-| [English Indices of Deprivation](https://www.gov.uk/government/collections/english-indices-of-deprivation) (IoD2019 or IoD2025) | LSOA-level file with scores (IoD2019 "File 7") | neighbourhood deprivation (IMD, IDACI) |
+| [English Indices of Deprivation 2025](https://www.gov.uk/government/statistics/english-indices-of-deprivation-2025) | File 7: all ranks, scores and deciles by LSOA (2021 codes) | neighbourhood deprivation (IMD, IDACI) |
 | [ONS Postcode Directory](https://geoportal.statistics.gov.uk/) *(optional)* | ONSPD / NSPL CSV | postcode → LSOA where GIAS has none |
 
 `python -m tgm download` fetches the three required sources. If one fails, it prints
@@ -197,8 +197,11 @@ The test suite checks the SQL coefficients against numpy's least squares.
   disadvantaged cohort the LA figure covers.
 - **IMD describes where a school is, not who attends.** That's why the regression also
   uses the school's own % disadvantaged.
-- **LSOA vintages**: IoD2019 uses 2011 LSOAs and IoD2025 uses 2021 LSOAs. Use the IoD release
-  that matches GIAS's LSOA codes. The build reports the match rate and warns if it's low.
+- **LSOA vintages**: the pipeline uses IoD2025 (2021 LSOAs), which matches every school's
+  GIAS LSOA code. IoD2019 used 2011 codes and matched only about 95%. The build reports the
+  match rate and warns if it drops.
+- **Selective schools** count in the area figures but are left out of beating the odds
+  (see above).
 - **Beating the odds is descriptive, not causal.** It flags schools worth a closer look
   (what are they doing?), not proof of what works.
 
